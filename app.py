@@ -65,7 +65,7 @@ def generate_video_async(job_id: str, prompt: str, title: str = None):
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
         jobs[job_id]['status'] = 'failed'
-        jobs[job_id]['message'] = str(e)
+        jobs[job_id]['message'] = 'Video generation failed. Please try again with a different prompt.'
 
 
 @app.route('/')
@@ -124,7 +124,7 @@ def generate():
         
     except Exception as e:
         logger.error(f"Generation request failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to start video generation. Please try again.'}), 500
 
 
 @app.route('/api/status/<job_id>', methods=['GET'])
