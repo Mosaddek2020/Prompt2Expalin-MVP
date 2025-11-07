@@ -96,7 +96,7 @@ def generate():
         word_count = len(prompt.split())
         if word_count > 50:
             return jsonify({
-                'warning': f'Prompt has {word_count} words. Recommended: <50 words for best results.'
+                'error': f'Prompt has {word_count} words. Recommended: <50 words for best results.'
             }), 400
         
         # Create job

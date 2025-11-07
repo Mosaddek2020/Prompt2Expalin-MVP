@@ -85,8 +85,15 @@ def main():
     
     # Check key functions in backend
     print("🔧 Checking Backend Functions:")
-    with open("explainer_video.py", 'r') as f:
-        content = f.read()
+    try:
+        with open("explainer_video.py", 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        print("❌ explainer_video.py not found")
+        return False
+    except Exception as e:
+        print(f"❌ Error reading explainer_video.py: {e}")
+        return False
     
     required_functions = [
         "def parse_key_terms",
@@ -107,8 +114,15 @@ def main():
     
     # Check Flask routes
     print("🛣️  Checking API Routes:")
-    with open("app.py", 'r') as f:
-        content = f.read()
+    try:
+        with open("app.py", 'r') as f:
+            content = f.read()
+    except FileNotFoundError:
+        print("❌ app.py not found")
+        return False
+    except Exception as e:
+        print(f"❌ Error reading app.py: {e}")
+        return False
     
     required_routes = [
         "@app.route('/')",
@@ -127,8 +141,15 @@ def main():
     
     # Check requirements.txt
     print("📋 Checking Requirements:")
-    with open("requirements.txt", 'r') as f:
-        requirements = f.read()
+    try:
+        with open("requirements.txt", 'r') as f:
+            requirements = f.read()
+    except FileNotFoundError:
+        print("❌ requirements.txt not found")
+        return False
+    except Exception as e:
+        print(f"❌ Error reading requirements.txt: {e}")
+        return False
     
     required_packages = [
         "spacy",

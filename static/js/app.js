@@ -241,4 +241,6 @@ function resetForm() {
 // Error handling for fetch
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
+    // Show error to user
+    showError(`Unexpected error: ${event.reason?.message || 'Something went wrong'}`);
 });

@@ -177,9 +177,10 @@ class ExplainerVideoGenerator:
         
         try:
             # Render with low quality for optimization
-            cmd = f"manim -ql --media_dir {self.output_dir} {temp_scene_file.name} ExplainerScene"
-            logger.info(f"Running: {cmd}")
-            os.system(cmd)
+            import subprocess
+            cmd = ["manim", "-ql", "--media_dir", str(self.output_dir), temp_scene_file.name, "ExplainerScene"]
+            logger.info(f"Running: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True)
             
             # Find the generated video
             video_path = self._find_latest_video(self.output_dir)
@@ -282,14 +283,16 @@ class ExplainerScene(Scene):
             Path to merged video file
         """
         logger.info("Merging audio and video...")
-        cmd = f'ffmpeg -i "{video_path}" -i "{audio_path}" -c:v copy -c:a aac -shortest -y "{output_path}"'
-        result = os.system(cmd)
+        import subprocess
+        cmd = ["ffmpeg", "-i", video_path, "-i", audio_path, "-c:v", "copy", "-c:a", "aac", "-shortest", "-y", output_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
         
-        if result == 0 and os.path.exists(output_path):
+        if result.returncode == 0 and os.path.exists(output_path):
             logger.info(f"✓ Final video saved to {output_path}")
             return output_path
         else:
-            raise RuntimeError("Failed to merge audio and video")
+            logger.error(f"FFmpeg stderr: {result.stderr}")
+            raise RuntimeError(f"Failed to merge audio and video: {result.stderr}")
     
     def generate(self, prompt: str, title: str = None) -> str:
         """
