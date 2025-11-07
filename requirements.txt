@@ -1,0 +1,24 @@
+# Core dependencies for Prompt→Explainer Video Generator
+# Optimized for MacBook Pro M2 (8 GB RAM)
+
+# NLP and ML
+spacy>=3.7.0,<4.0.0
+transformers>=4.35.0,<5.0.0
+torch>=2.1.0,<3.0.0
+
+# Text-to-Speech
+gTTS>=2.4.0,<3.0.0
+
+# Animation and Video
+manim>=0.18.0,<1.0.0
+# FFmpeg is required (install via: brew install ffmpeg on macOS)
+
+# Web Server
+Flask>=3.0.0,<4.0.0
+Flask-CORS>=4.0.0,<5.0.0
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
+
+# Note: After installing requirements, download the spaCy language model:
+# python -m spacy download en_core_web_sm

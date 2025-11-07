@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt→Explainer Video Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Prompt→Explainer Video Generator</h1>
+            <p class="subtitle">Convert your text prompts into engaging educational videos</p>
+        </header>
+
+        <main>
+            <div class="input-section card">
+                <h2>Create Your Video</h2>
+                <form id="videoForm">
+                    <div class="form-group">
+                        <label for="prompt">
+                            Your Prompt 
+                            <span class="label-hint">(max 50 words for optimal results)</span>
+                        </label>
+                        <textarea 
+                            id="prompt" 
+                            name="prompt" 
+                            rows="4" 
+                            placeholder="Enter a math or science concept to explain (e.g., 'Explain the Pythagorean theorem and its applications in real life')"
+                            required
+                            maxlength="500"></textarea>
+                        <div class="character-count">
+                            <span id="wordCount">0</span> words
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="title">
+                            Video Title 
+                            <span class="label-hint">(optional)</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="title" 
+                            name="title" 
+                            placeholder="Leave empty for auto-generated title"
+                            maxlength="100">
+                    </div>
+
+                    <button type="submit" id="generateBtn" class="btn btn-primary">
+                        <span class="btn-text">Generate Video</span>
+                        <span class="btn-loader" style="display: none;">⏳ Processing...</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Status Section -->
+            <div id="statusSection" class="status-section card" style="display: none;">
+                <h3>Generation Status</h3>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <p id="statusMessage" class="status-message"></p>
+            </div>
+
+            <!-- Result Section -->
+            <div id="resultSection" class="result-section card" style="display: none;">
+                <h3>✅ Your Video is Ready!</h3>
+                <div class="video-container">
+                    <video id="videoPlayer" controls>
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <div class="action-buttons">
+                    <a id="downloadBtn" class="btn btn-success" download="explainer_video.mp4">
+                        📥 Download Video
+                    </a>
+                    <button id="newVideoBtn" class="btn btn-secondary">
+                        ➕ Create Another Video
+                    </button>
+                </div>
+            </div>
+
+            <!-- Error Section -->
+            <div id="errorSection" class="error-section card" style="display: none;">
+                <h3>❌ Generation Failed</h3>
+                <p id="errorMessage" class="error-message"></p>
+                <button id="retryBtn" class="btn btn-secondary">
+                    🔄 Try Again
+                </button>
+            </div>
+        </main>
+
+        <footer>
+            <div class="features">
+                <div class="feature">
+                    <span class="feature-icon">🧠</span>
+                    <span class="feature-text">AI-Powered Analysis</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">🎨</span>
+                    <span class="feature-text">Dynamic Animations</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">🎙️</span>
+                    <span class="feature-text">Natural Voiceover</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">⚡</span>
+                    <span class="feature-text">Fast Generation</span>
+                </div>
+            </div>
+            <p class="footer-text">
+                Powered by spaCy, BART, gTTS, Manim, and FFmpeg
+            </p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
