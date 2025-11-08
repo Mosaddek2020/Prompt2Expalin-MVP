@@ -45,29 +45,42 @@ class ExplainerVideoGenerator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
-        logger.info("Initializing ExplainerVideoGenerator...")
-        
-        # Initialize spaCy for key term extraction
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-            logger.info("✓ spaCy model loaded")
-        except OSError:
-            logger.error("spaCy model not found. Run: python -m spacy download en_core_web_sm")
-            raise
-        
-        # Initialize BART summarizer (optimized for low memory)
-        try:
-            device = 0 if torch.cuda.is_available() else -1
-            self.summarizer = pipeline(
-                "summarization",
-                model="facebook/bart-large-cnn",
-                device=device,
-                torch_dtype=torch.float16 if device == 0 else torch.float32
-            )
-            logger.info(f"✓ BART summarizer loaded (device: {'GPU' if device == 0 else 'CPU'})")
-        except Exception as e:
-            logger.error(f"Failed to load BART model: {e}")
-            raise
+        # Use lazy loading for heavy models so importing/instantiating is fast
+        logger.info("Initializing ExplainerVideoGenerator (lazy model loading)...")
+        self.nlp = None  # spaCy NLP (load on demand)
+        self.summarizer = None  # HuggingFace summarizer (load on demand)
+        # record device choice for possible summarizer loading later
+        self.device = 0 if torch.cuda.is_available() else -1
+        self.models_loaded = False
+
+    def ensure_nlp_loaded(self):
+        """Load spaCy model if not already loaded."""
+        if self.nlp is None:
+            try:
+                self.nlp = spacy.load("en_core_web_sm")
+                logger.info("✓ spaCy model loaded")
+            except OSError:
+                logger.error("spaCy model not found. Run: python -m spacy download en_core_web_sm")
+                raise
+
+    def ensure_summarizer_loaded(self):
+        """Load the summarizer model on demand. This model is large (may download).
+
+        Call this only when you actually need summarization to avoid long downloads.
+        """
+        if self.summarizer is None:
+            try:
+                self.summarizer = pipeline(
+                    "summarization",
+                    model="facebook/bart-large-cnn",
+                    device=self.device,
+                    torch_dtype=torch.float16 if self.device == 0 else torch.float32
+                )
+                logger.info(f"✓ BART summarizer loaded (device: {'GPU' if self.device == 0 else 'CPU'})")
+                self.models_loaded = True
+            except Exception as e:
+                logger.error(f"Failed to load BART model: {e}")
+                raise
     
     def parse_key_terms(self, text: str) -> List[str]:
         """
@@ -80,6 +93,8 @@ class ExplainerVideoGenerator:
             List of key terms (nouns, proper nouns, and important entities)
         """
         logger.info("Parsing key terms...")
+        # Ensure spaCy is loaded before parsing
+        self.ensure_nlp_loaded()
         doc = self.nlp(text)
         
         # Extract nouns, proper nouns, and named entities
@@ -100,24 +115,79 @@ class ExplainerVideoGenerator:
     
     def summarize_text(self, text: str, min_length: int = 20, max_length: int = 100) -> str:
         """
-        Summarize text using BART model.
+        Process text for video content. If the text is a short prompt/question,
+        generate a simple explanation. If it's long content, summarize it.
         
         Args:
-            text: Input text
-            min_length: Minimum summary length
-            max_length: Maximum summary length
+            text: Input text (can be a prompt/question or full content)
+            min_length: Minimum output length
+            max_length: Maximum output length
             
         Returns:
-            Summarized text
+            Processed text suitable for video narration
         """
-        logger.info("Summarizing text...")
+        logger.info("Processing text for video...")
+        word_count = len(text.split())
         
-        # If text is already short, return as is
-        if len(text.split()) <= max_length:
-            logger.info("✓ Text already within target length")
+        # If text is a short prompt/question (< 15 words), create a detailed explanation
+        if word_count < 15:
+            logger.info("✓ Short prompt detected - creating detailed explanation")
+            # Extract the main topic from the prompt
+            self.ensure_nlp_loaded()
+            doc = self.nlp(text)
+            
+            # Try to extract noun chunks (compound nouns like "black holes")
+            noun_chunks = [chunk.text.lower() for chunk in doc.noun_chunks if not all(token.is_stop for token in chunk)]
+            
+            if noun_chunks:
+                main_topic = noun_chunks[0]
+                # Determine singular/plural for grammar
+                is_plural = main_topic.endswith('s') or ' ' in main_topic
+                verb = "are" if is_plural else "is"
+                pronoun = "They" if is_plural else "It"
+                
+                # Generate a longer, more detailed explanation
+                explanation = f"""{main_topic.capitalize()} {verb} fascinating concepts in science that have captivated researchers and enthusiasts alike. 
+                
+{pronoun} represent fundamental phenomena that help us understand the workings of our universe at both microscopic and cosmic scales. 
+
+The study of {main_topic} involves multiple disciplines including physics, mathematics, and computational science. 
+
+Understanding {main_topic} requires examining their properties, behaviors, and the principles that govern their existence. 
+
+These concepts play crucial roles in advancing our knowledge and developing new technologies. 
+
+Scientists continue to explore {main_topic} through observation, experimentation, and theoretical modeling. 
+
+Let's dive deeper into the key aspects, important characteristics, and fascinating details about {main_topic} that make {pronoun.lower()} so significant in modern science."""
+            else:
+                # Fallback if no topics found
+                explanation = f"""{text}. This is an intriguing and important topic in science and mathematics. 
+                
+It encompasses various concepts and principles that contribute to our understanding of the natural world. 
+
+Exploring this subject reveals connections between different scientific disciplines and real-world applications. 
+
+The study of this topic involves both theoretical frameworks and practical investigations. 
+
+Researchers have made significant discoveries that continue to shape our knowledge in this area. 
+
+Let's examine the fundamental concepts, key principles, and interesting facts that make this topic essential for scientific literacy."""
+            
+            logger.info(f"✓ Generated detailed explanation ({len(explanation.split())} words)")
+            return explanation
+        
+        # If text is medium length, use as-is
+        if word_count <= max_length:
+            logger.info("✓ Text length is appropriate")
             return text
         
+        # If text is long, summarize it
         try:
+            logger.info("Long text detected - will summarize")
+            # Load summarizer lazily (this may download a large model)
+            self.ensure_summarizer_loaded()
+
             summary = self.summarizer(
                 text,
                 min_length=min_length,
@@ -127,7 +197,7 @@ class ExplainerVideoGenerator:
             logger.info(f"✓ Summary generated ({len(summary.split())} words)")
             return summary
         except Exception as e:
-            logger.error(f"Summarization failed: {e}. Using original text.")
+            logger.error(f"Summarization failed: {e}. Using truncated text.")
             return text[:500]  # Fallback: truncate to reasonable length
     
     def generate_voiceover(self, text: str, output_path: str) -> str:
@@ -191,52 +261,254 @@ class ExplainerVideoGenerator:
             os.unlink(temp_scene_file.name)
     
     def _generate_scene_code(self, title: str, content: str, key_terms: List[str]) -> str:
-        """Generate Manim scene code dynamically."""
+        """Generate Manim scene code dynamically with enhanced animations."""
         # Escape strings for Python code
         title_escaped = title.replace('"', '\\"')
         content_escaped = content.replace('"', '\\"')
         
-        # Wrap content text for better display
-        content_lines = self._wrap_text(content, 50)
+        # Split content into paragraphs for better pacing
+        paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
         
         scene_code = f'''
 from manim import *
 
 class ExplainerScene(Scene):
     def construct(self):
-        # Title
-        title = Text("{title_escaped}", font_size=48, color=BLUE)
-        title.to_edge(UP)
-        self.play(Write(title))
-        self.wait(1)
+        # Set background color
+        self.camera.background_color = "#0a0e27"
         
-        # Content
-        content_lines = {repr(content_lines)}
-        content_group = VGroup()
-        for line in content_lines:
-            text = Text(line, font_size=24)
-            content_group.add(text)
-        content_group.arrange(DOWN, aligned_edge=LEFT, buff=0.3)
-        content_group.next_to(title, DOWN, buff=0.5)
+        # Enhanced title sequence with underline
+        title = Text("{title_escaped}", font_size=60, color=BLUE, weight=BOLD)
+        title.to_edge(UP, buff=0.8)
         
-        self.play(FadeIn(content_group))
+        # Add decorative underline
+        underline = Line(
+            start=title.get_left() + DOWN*0.3,
+            end=title.get_right() + DOWN*0.3,
+            color=YELLOW,
+            stroke_width=4
+        )
+        
+        # Animate title with scale effect
+        self.play(
+            Write(title, run_time=2),
+            Create(underline, run_time=1.5)
+        )
+        self.wait(1.5)
+        
+        # Process content in chunks for better pacing
+        paragraphs = {repr(paragraphs)}
+        
+        for i, para in enumerate(paragraphs):
+            # Clear previous content with smooth fade
+            if i > 0:
+                self.play(
+                    FadeOut(content_text, shift=UP*0.5),
+                    run_time=0.8
+                )
+                self.wait(0.3)
+            
+            # Wrap text to fit screen
+            words = para.split()
+            lines = []
+            current_line = []
+            max_width = 45
+            
+            for word in words:
+                test_line = ' '.join(current_line + [word])
+                if len(test_line) <= max_width:
+                    current_line.append(word)
+                else:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = [word]
+            if current_line:
+                lines.append(' '.join(current_line))
+            
+            # Create text group with color gradient
+            content_group = VGroup()
+            colors = [WHITE, "#e0e0e0", "#d0d0d0"]
+            
+            for idx, line in enumerate(lines):
+                text_obj = Text(
+                    line, 
+                    font_size=26,
+                    color=colors[min(idx % 3, len(colors)-1)]
+                )
+                content_group.add(text_obj)
+            
+            content_group.arrange(DOWN, aligned_edge=LEFT, buff=0.3)
+            content_group.next_to(title, DOWN, buff=1.2)
+            content_text = content_group
+            
+            # Animate in with cascading effect
+            for line in content_group:
+                self.play(
+                    FadeIn(line, shift=RIGHT*0.3),
+                    run_time=0.4
+                )
+            
+            # Add a subtle pulse effect
+            self.play(
+                content_text.animate.scale(1.02),
+                run_time=0.3
+            )
+            self.play(
+                content_text.animate.scale(1/1.02),
+                run_time=0.3
+            )
+            
+            # Reading time
+            reading_time = max(2.5, len(words) / 3)
+            self.wait(reading_time)
+        
+        # Enhanced key terms section with animations
+        key_terms = {repr(key_terms[:5])}
+        if key_terms:
+            self.play(
+                FadeOut(content_text, shift=DOWN*0.5),
+                run_time=0.8
+            )
+            self.wait(0.5)
+            
+            # Key concepts title with circle decoration
+            key_title = Text("Key Concepts", font_size=48, color=YELLOW, weight=BOLD)
+            key_title.next_to(title, DOWN, buff=1.2)
+            
+            # Decorative circles around title
+            circle1 = Circle(radius=0.3, color=YELLOW, stroke_width=3)
+            circle2 = Circle(radius=0.3, color=YELLOW, stroke_width=3)
+            circle1.next_to(key_title, LEFT, buff=0.4)
+            circle2.next_to(key_title, RIGHT, buff=0.4)
+            
+            self.play(
+                Write(key_title, run_time=1.5),
+                Create(circle1),
+                Create(circle2)
+            )
+            self.wait(0.8)
+            
+            # Animated key terms with icons
+            terms_group = VGroup()
+            bullets = VGroup()
+            
+            for i, term in enumerate(key_terms):
+                # Create bullet point
+                bullet = Dot(color=BLUE, radius=0.12)
+                
+                # Create term text
+                term_text = Text(f"  {{term}}", font_size=32, color=WHITE)
+                
+                # Group bullet and text
+                term_line = VGroup(bullet, term_text).arrange(RIGHT, buff=0.2)
+                terms_group.add(term_line)
+                bullets.add(bullet)
+            
+            terms_group.arrange(DOWN, aligned_edge=LEFT, buff=0.5)
+            terms_group.next_to(key_title, DOWN, buff=1)
+            
+            # Animate each term with emphasis
+            for i, term_line in enumerate(terms_group):
+                bullet, text = term_line
+                
+                # Growing circle effect for bullet
+                temp_circle = Circle(radius=0.12, color=BLUE).move_to(bullet)
+                self.play(
+                    GrowFromCenter(temp_circle),
+                    run_time=0.4
+                )
+                self.play(
+                    Transform(temp_circle, bullet),
+                    run_time=0.3
+                )
+                self.remove(temp_circle)
+                self.add(bullet)
+                
+                # Slide in text
+                self.play(
+                    Write(text, run_time=0.8)
+                )
+                
+                # Brief highlight effect
+                highlight_rect = SurroundingRectangle(
+                    text,
+                    color=YELLOW,
+                    buff=0.15,
+                    stroke_width=2
+                )
+                self.play(Create(highlight_rect), run_time=0.4)
+                self.play(FadeOut(highlight_rect), run_time=0.4)
+                
+                self.wait(1)
+            
+            self.wait(2)
+            
+            # Fade out key concepts
+            self.play(
+                FadeOut(key_title),
+                FadeOut(circle1),
+                FadeOut(circle2),
+                FadeOut(terms_group),
+                run_time=1
+            )
+        
+        # Enhanced outro with animation
+        self.wait(0.5)
+        
+        # Create star decorations
+        stars = VGroup()
+        for _ in range(8):
+            star = Star(n=5, outer_radius=0.15, color=YELLOW, fill_opacity=0.8)
+            star.move_to([
+                np.random.uniform(-6, 6),
+                np.random.uniform(-3, 3),
+                0
+            ])
+            stars.add(star)
+        
+        # Outro message
+        outro = Text("Thank you for watching!", font_size=52, color=GREEN, weight=BOLD)
+        
+        # Animate stars twinkling
+        self.play(
+            LaggedStart(
+                *[GrowFromCenter(star) for star in stars],
+                lag_ratio=0.15
+            ),
+            run_time=1.5
+        )
+        
+        # Zoom in outro text
+        outro.scale(0.01)
+        self.add(outro)
+        self.play(
+            outro.animate.scale(100),
+            run_time=1.5,
+            rate_func=smooth
+        )
+        
+        # Pulse effect
+        self.play(
+            outro.animate.scale(1.1),
+            stars.animate.set_opacity(1),
+            run_time=0.4
+        )
+        self.play(
+            outro.animate.scale(1/1.1),
+            run_time=0.4
+        )
+        
         self.wait(2)
         
-        # Highlight key terms
-        key_terms = {repr(key_terms[:3])}  # Limit to top 3
-        if key_terms:
-            highlights = VGroup()
-            for i, term in enumerate(key_terms):
-                highlight = Text(term, font_size=32, color=YELLOW)
-                highlights.add(highlight)
-            highlights.arrange(RIGHT, buff=0.5)
-            highlights.to_edge(DOWN, buff=1)
-            
-            self.play(FadeIn(highlights))
-            self.wait(1)
-            self.play(FadeOut(highlights))
-        
-        self.wait(1)
+        # Final fadeout with rotation
+        self.play(
+            FadeOut(title, shift=UP),
+            FadeOut(underline, shift=UP),
+            FadeOut(outro, shift=DOWN),
+            FadeOut(stars, scale=0.5),
+            run_time=2
+        )
+        self.wait(0.5)
 '''
         return scene_code
     
